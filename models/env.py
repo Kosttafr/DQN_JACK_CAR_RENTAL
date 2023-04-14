@@ -3,14 +3,20 @@ from gymnasium import spaces
 import pygame
 import numpy as np
 
+FIELD_SIZE = 21
+MAX_MOVE = 5
 MOVING_REWARD = -2
 CREDIT_REWARD = 10
+AVERAGE_REQUEST_0 = 3
+AVERAGE_REQUEST_1 = 4
+AVERAGE_RETURN_0 = 3
+AVERAGE_RETURN_1 = 2
 
 
 class JackCarRental(gymnasium.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
-    def __init__(self, render_mode=None, size=21, max_move = 5):
+    def __init__(self, render_mode=None, size=FIELD_SIZE, max_move = MAX_MOVE):
         self.size = size  # The size of the square grid
         self.window_size = 512  # The size of the PyGame window
 
@@ -47,10 +53,10 @@ class JackCarRental(gymnasium.Env):
         self.clock = None
 
     def _get_obs(self):
-        return {"agent": self.state}
+        return self.state
 
     def _get_info(self):
-        return {"reward": self.accumulated_reward}
+        return self.accumulated_reward
 
     def reset(self, seed=None, options=None):
         # We need the following line to seed self.np_random
@@ -81,8 +87,8 @@ class JackCarRental(gymnasium.Env):
 
 
         # Generate requests and returns for cars on both locations
-        requests = [np.random.poisson(3), np.random.poisson(4)]
-        returns = [np.random.poisson(3), np.random.poisson(2)]
+        requests = [np.random.poisson(AVERAGE_REQUEST_0), np.random.poisson(AVERAGE_REQUEST_1)]
+        returns = [np.random.poisson(AVERAGE_RETURN_0), np.random.poisson(AVERAGE_RETURN_1)]
 
         # An episode is done if Jack is a bankrupt
         terminated = (self.state[0] < requests[0]) or (self.state[1] < requests[1])
@@ -97,7 +103,7 @@ class JackCarRental(gymnasium.Env):
 
         # return observation, reward, terminated, False, info
 
-        return [initial_state, action, reward, self.state, terminated]
+        return [initial_state, action, self.state, reward], terminated
 
     def render(self):
         if self.render_mode == "rgb_array":
