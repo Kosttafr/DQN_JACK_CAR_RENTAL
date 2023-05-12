@@ -7,10 +7,12 @@ FIELD_SIZE = 21
 MAX_MOVE = 5
 MOVING_REWARD = -2
 CREDIT_REWARD = 10
+LOSS_REWARD = 0
 AVERAGE_REQUEST_0 = 3
 AVERAGE_REQUEST_1 = 4
 AVERAGE_RETURN_0 = 3
 AVERAGE_RETURN_1 = 2
+DETERMINED = True
 
 
 class JackCarRental(gymnasium.Env):
@@ -27,14 +29,8 @@ class JackCarRental(gymnasium.Env):
         # Current state of Jack's business ([a, b], where a and b are the amount of cars on location A and B)
         self.state = self.np_random.integers(0, self.size, size=2, dtype=int)
 
-        # We have 11 actions, from -5 to 5 (The amount of cars we move from A to B)
+        # We have 2*MAX_MOVE + 1 actions, from -MAX_MOVE to MAX_MOVE (The amount of cars we move from A to B)
         self.action_space = spaces.Discrete(max_move*2 + 1, start=-max_move)
-
-        """
-        The following dictionary maps abstract actions from `self.action_space` to 
-        the direction we will walk in if that action is taken.
-        """
-        self._action_to_direction = {a: np.array([-a, a]) for a in range(-max_move, max_move + 1)}
 
         self.accumulated_reward = 0
 
@@ -58,12 +54,15 @@ class JackCarRental(gymnasium.Env):
     def _get_info(self):
         return self.accumulated_reward
 
-    def reset(self, seed=None, options=None):
+    def reset(self, seed=None, options=None, state=None):
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
-        # Choose the agent's location uniformly at random
-        self.state = self.np_random.integers(0, self.size, size=2, dtype=int)
+        if state is None:
+            # Choose the agent's location uniformly at random
+            self.state = self.np_random.integers(0, self.size, size=2, dtype=int)
+        else:
+            self.state = np.array(state, dtype=int)
 
         observation = self._get_obs()
         info = self._get_info()
@@ -77,24 +76,27 @@ class JackCarRental(gymnasium.Env):
         initial_state = self.state
         reward = 0
 
-        # Map the action (element of {-5, ..., 5}) to the direction we walk in
-        direction = self._action_to_direction[action]
-
         reward += abs(action) * MOVING_REWARD
 
         # We use `np.clip` to make sure we don't leave the grid
-        self.state = np.clip(self.state + direction, 0, self.size - 1)
+        self.state = np.clip(self.state + [action, -action], 0, self.size - 1)
 
 
         # Generate requests and returns for cars on both locations
-        requests = [np.random.poisson(AVERAGE_REQUEST_0), np.random.poisson(AVERAGE_REQUEST_1)]
-        returns = [np.random.poisson(AVERAGE_RETURN_0), np.random.poisson(AVERAGE_RETURN_1)]
+        if DETERMINED:
+            requests = [AVERAGE_REQUEST_0, AVERAGE_REQUEST_1]
+            returns = [AVERAGE_RETURN_0, AVERAGE_RETURN_1]
+        else:
+            requests = [np.random.poisson(AVERAGE_REQUEST_0), np.random.poisson(AVERAGE_REQUEST_1)]
+            returns = [np.random.poisson(AVERAGE_RETURN_0), np.random.poisson(AVERAGE_RETURN_1)]
 
         # An episode is done if Jack is a bankrupt
         terminated = (self.state[0] < requests[0]) or (self.state[1] < requests[1])
 
         if not terminated:
             reward += CREDIT_REWARD * (requests[0] + requests[1])
+        else:
+            reward += LOSS_REWARD + CREDIT_REWARD * (requests[0] + requests[1])
 
         self.state = np.clip(self.state - requests + returns, 0, self.size - 1)
 
@@ -104,6 +106,11 @@ class JackCarRental(gymnasium.Env):
         # return observation, reward, terminated, False, info
 
         return [initial_state, action, self.state, reward], terminated
+
+    def chess_board_transition(self):
+        new_state = np.zeros(FIELD_SIZE * FIELD_SIZE)
+        new_state[FIELD_SIZE * self.state[0] + self.state[1]] = 1
+        return new_state
 
     def render(self):
         if self.render_mode == "rgb_array":
